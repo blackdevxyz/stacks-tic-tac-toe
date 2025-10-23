@@ -1,0 +1,18 @@
+---
+id: 0
+name: Testnet deployment
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: tic-tac-toe
+            expected-sender: ST2QPZ3Y7N6AT2TZZ2V18WP16RGZDBGZ9SKDJGTJA
+            cost: 102810
+            path: contracts/tic-tac-toe.clar
+            anchor-block-only: true
+            clarity-version: 3
+      epoch: "3.0"
