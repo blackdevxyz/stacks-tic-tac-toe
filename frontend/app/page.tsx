@@ -1,4 +1,5 @@
 import { GamesList } from "@/components/games-list";
+import Leaderboard from "@/components/leaderboard";
 import { getAllGames } from "@/lib/contract";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ export default async function Home() {
       </div>
 
       <GamesList games={games} />
+      <Leaderboard />
     </section>
   );
 }

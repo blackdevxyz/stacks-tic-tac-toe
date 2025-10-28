@@ -9,6 +9,7 @@ import {
   TupleCV,
   uintCV,
   UIntCV,
+  cvToJSON,
 } from "@stacks/transactions";
 
 // REPLACE THESE WITH YOUR OWN
@@ -146,4 +147,19 @@ export async function play(gameId: number, moveIndex: number, move: Move) {
   };
 
   return txOptions;
+}
+
+// ..........
+
+export async function fetchLeaderboard() {
+  const response = await fetchCallReadOnlyFunction({
+    contractAddress: "YOUR_CONTRACT_ADDRESS",
+    contractName: "tic-tac-toe",
+    functionName: "get-leaderboard",
+    functionArgs: [],
+    network: STACKS_TESTNET,
+    senderAddress: "ST_ADDRESS",
+  });
+
+  return cvToJSON(response).value;
 }

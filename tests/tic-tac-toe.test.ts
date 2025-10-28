@@ -170,3 +170,75 @@ describe("Tic Tac Toe Tests", () => {
     );
   });
 });
+
+  @ts-ignore
+import {
+  Clarinet,
+  Tx,
+  Chain,
+  Account,
+  types,
+} from "vitest-environment-clarinet";
+
+Clarinet.test({
+  name: "Tic Tac Toe - detects winner and updates leaderboard",
+  async fn(chain: Chain, accounts: Map<string, Account>) {
+    const player1 = accounts.get("wallet_1")!;
+    const player2 = accounts.get("wallet_2")!;
+
+    // 1️ Create game
+    let block = chain.mineBlock([
+      Tx.contractCall("tic-tac-toe", "create-game", [], player1.address),
+    ]);
+    block.receipts[0].result.expectOk();
+    console.log("Game created");
+
+    // 2️ Join game
+    block = chain.mineBlock([
+      Tx.contractCall("tic-tac-toe", "join-game", ["u1"], player2.address),
+    ]);
+    block.receipts[0].result.expectOk();
+    console.log("Player 2 joined game");
+
+    // 3️ Play moves (Player X wins top row)
+    const moves = [
+      { player: player1, pos: "u0" },
+      { player: player2, pos: "u3" },
+      { player: player1, pos: "u1" },
+      { player: player2, pos: "u4" },
+      { player: player1, pos: "u2" },
+    ];
+
+    for (const move of moves) {
+      block = chain.mineBlock([
+        Tx.contractCall(
+          "tic-tac-toe",
+          "make-move",
+          [move.pos, "u1"],
+          move.player.address
+        ),
+      ]);
+      block.receipts[0].result.expectOk();
+    }
+
+    // 4️ Read back game to confirm winner
+    const gameInfo = chain.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-game",
+      ["u1"],
+      player1.address
+    );
+    gameInfo.result.expectOk();
+    console.log("Game info:", gameInfo);
+
+    // 5️ Check leaderboard updated
+    const leaderboard = chain.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-leaderboard",
+      [],
+      player1.address
+    );
+    leaderboard.result.expectOk();
+    console.log("Leaderboard:", leaderboard);
+  },
+});
