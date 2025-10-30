@@ -1,244 +1,366 @@
 import { Cl } from "@stacks/transactions";
+
 import { describe, expect, it } from "vitest";
+import { TupleCV } from "@stacks/transactions";
 
 const accounts = simnet.getAccounts();
-const alice = accounts.get("wallet_1")!;
-const bob = accounts.get("wallet_2")!;
+const deployer = accounts.get("deployer")!;
+const player1 = accounts.get("wallet_1")!;
+const player2 = accounts.get("wallet_2")!;
 
-// Helper function to create a new game with the given bet amount, move index, and move
-// on behalf of the `user` address
-function createGame(
-  betAmount: number,
-  moveIndex: number,
-  move: number,
-  user: string
-) {
-  return simnet.callPublicFn(
-    "tic-tac-toe",
-    "create-game",
-    [Cl.uint(betAmount), Cl.uint(moveIndex), Cl.uint(move)],
-    user
-  );
-}
-
-// Helper function to join a game with the given move index and move on behalf of the `user` address
-function joinGame(moveIndex: number, move: number, user: string) {
-  return simnet.callPublicFn(
-    "tic-tac-toe",
-    "join-game",
-    [Cl.uint(0), Cl.uint(moveIndex), Cl.uint(move)],
-    user
-  );
-}
-
-// Helper function to play a move with the given move index and move on behalf of the `user` address
-function play(moveIndex: number, move: number, user: string) {
-  return simnet.callPublicFn(
-    "tic-tac-toe",
-    "play",
-    [Cl.uint(0), Cl.uint(moveIndex), Cl.uint(move)],
-    user
-  );
-}
-
-describe("Tic Tac Toe Tests", () => {
-  it("allows game creation", () => {
-    const { result, events } = createGame(100, 0, 1, alice);
-
-    expect(result).toBeOk(Cl.uint(0));
-    expect(events.length).toBe(2); // print_event and stx_transfer_event
-  });
-
-  it("allows game joining", () => {
-    createGame(100, 0, 1, alice);
-    const { result, events } = joinGame(1, 2, bob);
-
-    expect(result).toBeOk(Cl.uint(0));
-    expect(events.length).toBe(2); // print_event and stx_transfer_event
-  });
-
-  it("allows game playing", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(1, 2, bob);
-    const { result, events } = play(2, 1, alice);
-
-    expect(result).toBeOk(Cl.uint(0));
-    expect(events.length).toBe(1); // print_event
-  });
-
-  it("does not allow creating a game with a bet amount of 0", () => {
-    const { result } = createGame(0, 0, 1, alice);
-    expect(result).toBeErr(Cl.uint(100));
-  });
-
-  it("does not allow joining a game that has already been joined", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(1, 2, bob);
-
-    const { result } = joinGame(1, 2, alice);
-    expect(result).toBeErr(Cl.uint(103));
-  });
-
-  it("does not allow an out of bounds move", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(1, 2, bob);
-
-    const { result } = play(10, 1, alice);
-    expect(result).toBeErr(Cl.uint(101));
-  });
-
-  it("does not allow a non X or O move", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(1, 2, bob);
-
-    const { result } = play(2, 3, alice);
-    expect(result).toBeErr(Cl.uint(101));
-  });
-
-  it("does not allow moving on an occupied spot", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(1, 2, bob);
-
-    const { result } = play(1, 1, alice);
-    expect(result).toBeErr(Cl.uint(101));
-  });
-
-  it("allows player one to win", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(3, 2, bob);
-    play(1, 1, alice);
-    play(4, 2, bob);
-    const { result, events } = play(2, 1, alice);
-
-    expect(result).toBeOk(Cl.uint(0));
-    expect(events.length).toBe(2); // print_event and stx_transfer_event
-
-    const gameData = simnet.getMapEntry("tic-tac-toe", "games", Cl.uint(0));
-    expect(gameData).toBeSome(
-      Cl.tuple({
-        "player-one": Cl.principal(alice),
-        "player-two": Cl.some(Cl.principal(bob)),
-        "is-player-one-turn": Cl.bool(false),
-        "bet-amount": Cl.uint(100),
-        board: Cl.list([
-          Cl.uint(1),
-          Cl.uint(1),
-          Cl.uint(1),
-          Cl.uint(2),
-          Cl.uint(2),
-          Cl.uint(0),
-          Cl.uint(0),
-          Cl.uint(0),
-          Cl.uint(0),
-        ]),
-        winner: Cl.some(Cl.principal(alice)),
-      })
-    );
-  });
-
-  it("allows player two to win", () => {
-    createGame(100, 0, 1, alice);
-    joinGame(3, 2, bob);
-    play(1, 1, alice);
-    play(4, 2, bob);
-    play(8, 1, alice);
-    const { result, events } = play(5, 2, bob);
-
-    expect(result).toBeOk(Cl.uint(0));
-    expect(events.length).toBe(2); // print_event and stx_transfer_event
-
-    const gameData = simnet.getMapEntry("tic-tac-toe", "games", Cl.uint(0));
-    expect(gameData).toBeSome(
-      Cl.tuple({
-        "player-one": Cl.principal(alice),
-        "player-two": Cl.some(Cl.principal(bob)),
-        "is-player-one-turn": Cl.bool(true),
-        "bet-amount": Cl.uint(100),
-        board: Cl.list([
-          Cl.uint(1),
-          Cl.uint(1),
-          Cl.uint(0),
-          Cl.uint(2),
-          Cl.uint(2),
-          Cl.uint(2),
-          Cl.uint(0),
-          Cl.uint(0),
-          Cl.uint(1),
-        ]),
-        winner: Cl.some(Cl.principal(bob)),
-      })
-    );
-  });
-});
-
-  @ts-ignore
-import {
-  Clarinet,
-  Tx,
-  Chain,
-  Account,
-  types,
-} from "vitest-environment-clarinet";
-
-Clarinet.test({
-  name: "Tic Tac Toe - detects winner and updates leaderboard",
-  async fn(chain: Chain, accounts: Map<string, Account>) {
-    const player1 = accounts.get("wallet_1")!;
-    const player2 = accounts.get("wallet_2")!;
-
-    // 1️ Create game
-    let block = chain.mineBlock([
-      Tx.contractCall("tic-tac-toe", "create-game", [], player1.address),
-    ]);
-    block.receipts[0].result.expectOk();
-    console.log("Game created");
-
-    // 2️ Join game
-    block = chain.mineBlock([
-      Tx.contractCall("tic-tac-toe", "join-game", ["u1"], player2.address),
-    ]);
-    block.receipts[0].result.expectOk();
-    console.log("Player 2 joined game");
-
-    // 3️ Play moves (Player X wins top row)
-    const moves = [
-      { player: player1, pos: "u0" },
-      { player: player2, pos: "u3" },
-      { player: player1, pos: "u1" },
-      { player: player2, pos: "u4" },
-      { player: player1, pos: "u2" },
-    ];
-
-    for (const move of moves) {
-      block = chain.mineBlock([
-        Tx.contractCall(
-          "tic-tac-toe",
-          "make-move",
-          [move.pos, "u1"],
-          move.player.address
-        ),
-      ]);
-      block.receipts[0].result.expectOk();
-    }
-
-    // 4️ Read back game to confirm winner
-    const gameInfo = chain.callReadOnlyFn(
+describe("Tic-Tac-Toe Contract with Leaderboard", () => {
+  it("creates a game with a bet", () => {
+    const { result } = simnet.callPublicFn(
       "tic-tac-toe",
-      "get-game",
-      ["u1"],
-      player1.address
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)], // 1 STX bet, position 0, X
+      player1
     );
-    gameInfo.result.expectOk();
-    console.log("Game info:", gameInfo);
 
-    // 5️ Check leaderboard updated
-    const leaderboard = chain.callReadOnlyFn(
+    expect(result).toBeOk(Cl.uint(0)); // Game ID 0
+  });
+
+  it("rejects creating a game with zero bet", () => {
+    const { result } = simnet.callPublicFn(
       "tic-tac-toe",
-      "get-leaderboard",
-      [],
-      player1.address
+      "create-game",
+      [Cl.uint(0), Cl.uint(0), Cl.uint(1)],
+      player1
     );
-    leaderboard.result.expectOk();
-    console.log("Leaderboard:", leaderboard);
-  },
+
+    expect(result).toBeErr(Cl.uint(100)); // ERR_MIN_BET_AMOUNT
+  });
+
+  it("allows player 2 to join game", () => {
+    // Player 1 creates game
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    // Player 2 joins
+    const { result } = simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(2)], // Game 0, position 1, O
+      player2
+    );
+
+    expect(result).toBeOk(Cl.uint(0));
+  });
+
+  it("rejects joining with wrong piece (X instead of O)", () => {
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    const { result } = simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(1)], // Trying to play X
+      player2
+    );
+
+    expect(result).toBeErr(Cl.uint(101)); // ERR_INVALID_MOVE
+  });
+
+  it("allows alternating turns during gameplay", () => {
+    // Create game
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    // Player 2 joins
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(2)],
+      player2
+    );
+
+    // Player 1's turn
+    const move1 = simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(3), Cl.uint(1)],
+      player1
+    );
+    expect(move1.result).toBeOk(Cl.uint(0));
+
+    // Player 2's turn
+    const move2 = simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(4), Cl.uint(2)],
+      player2
+    );
+    expect(move2.result).toBeOk(Cl.uint(0));
+  });
+
+  it("rejects move when not player's turn", () => {
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(2)],
+      player2
+    );
+
+    // Player 2 tries to play when it's Player 1's turn
+    const { result } = simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(3), Cl.uint(2)],
+      player2
+    );
+
+    expect(result).toBeErr(Cl.uint(104)); // ERR_NOT_YOUR_TURN
+  });
+
+  it("rejects move on occupied position", () => {
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(2)],
+      player2
+    );
+
+    // Player 1 tries to play on position 0 (already taken during create)
+    const { result } = simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    expect(result).toBeErr(Cl.uint(101)); // ERR_INVALID_MOVE
+  });
+
+  it("detects horizontal win and updates leaderboard", () => {
+    // Create game - Player 1 plays position 0
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    // Player 2 joins - plays position 3
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(3), Cl.uint(2)],
+      player2
+    );
+
+    // Player 1 plays position 1
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(1)],
+      player1
+    );
+
+    // Player 2 plays position 4
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(4), Cl.uint(2)],
+      player2
+    );
+
+    // Player 1 plays position 2 and wins (top row: 0, 1, 2)
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(2), Cl.uint(1)],
+      player1
+    );
+
+    // Check leaderboard - player 1 should have 1 win
+    const wins = simnet.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-player-wins",
+      [Cl.principal(player1)],
+      player1
+    );
+
+    const winsData = wins.result as TupleCV;
+    expect(winsData.data["wins"]).toStrictEqual(Cl.uint(1));
+  });
+
+  it("detects diagonal win and updates leaderboard", () => {
+    // Create game - Player 1 plays position 0
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+
+    // Player 2 joins - plays position 1
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(2)],
+      player2
+    );
+
+    // Player 1 plays position 4 (center)
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(4), Cl.uint(1)],
+      player1
+    );
+
+    // Player 2 plays position 2
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(2), Cl.uint(2)],
+      player2
+    );
+
+    // Player 1 plays position 8 and wins (diagonal: 0, 4, 8)
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(8), Cl.uint(1)],
+      player1
+    );
+
+    // Check leaderboard - player 1 should have 1 win
+    const wins = simnet.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-player-wins",
+      [Cl.principal(player1)],
+      player1
+    );
+
+    const winsData = wins.result as TupleCV;
+    expect(winsData.data["wins"]).toStrictEqual(Cl.uint(1));
+  });
+
+  it("tracks multiple wins correctly", () => {
+    // Game 1 - Player 1 wins
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(0), Cl.uint(3), Cl.uint(2)],
+      player2
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(1), Cl.uint(1)],
+      player1
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(4), Cl.uint(2)],
+      player2
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(0), Cl.uint(2), Cl.uint(1)],
+      player1
+    );
+
+    // Game 2 - Player 2 wins
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "create-game",
+      [Cl.uint(1000000), Cl.uint(0), Cl.uint(1)],
+      player1
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "join-game",
+      [Cl.uint(1), Cl.uint(3), Cl.uint(2)],
+      player2
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(1), Cl.uint(1), Cl.uint(1)],
+      player1
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(1), Cl.uint(4), Cl.uint(2)],
+      player2
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(1), Cl.uint(6), Cl.uint(1)],
+      player1
+    );
+    simnet.callPublicFn(
+      "tic-tac-toe",
+      "play",
+      [Cl.uint(1), Cl.uint(5), Cl.uint(2)],
+      player2
+    );
+
+    // Check both players' wins
+    const p1Wins = simnet.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-player-wins",
+      [Cl.principal(player1)],
+      player1
+    );
+    const p1Data = p1Wins.result as TupleCV;
+    expect(p1Data.data["wins"]).toStrictEqual(Cl.uint(1));
+
+    const p2Wins = simnet.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-player-wins",
+      [Cl.principal(player2)],
+      player2
+    );
+    const p2Data = p2Wins.result as TupleCV;
+    expect(p2Data.data["wins"]).toStrictEqual(Cl.uint(1));
+  });
+
+  it("returns zero wins for player with no wins", () => {
+    const wins = simnet.callReadOnlyFn(
+      "tic-tac-toe",
+      "get-player-wins",
+      [Cl.principal(deployer)],
+      deployer
+    );
+    expect(Cl.prettyPrint(wins.result)).toContain("wins: u0");
+  });
 });

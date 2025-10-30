@@ -1,5 +1,4 @@
 ;; The game ID to use for the next game
-
 (define-data-var latest-game-id uint u0)
 
 (define-map games
@@ -12,6 +11,22 @@
         board: (list 9 uint),
         winner: (optional principal),
     }
+)
+
+;; Leaderboard map to track wins
+(define-map leaderboard
+    { player: principal }
+    { wins: uint }
+)
+
+;; Helper to update leaderboard when someone wins
+(define-private (update-leaderboard (winner principal))
+    (let ((existing (map-get? leaderboard { player: winner })))
+        (if (is-some existing)
+            (map-set leaderboard { player: winner } { wins: (+ (get wins (unwrap-panic existing)) u1) })
+            (map-set leaderboard { player: winner } { wins: u1 })
+        )
+    )
 )
 
 (define-private (validate-move
@@ -234,10 +249,15 @@
         )
 
         ;; if the game has been won, transfer the (bet amount * 2 = both players bets) STX to the winner
+        ;; and update the leaderboard
         (if is-now-winner
-            (try! (as-contract (stx-transfer? (* u2 (get bet-amount game-data)) tx-sender
-                player-turn
-            )))
+            (begin
+                (try! (as-contract (stx-transfer? (* u2 (get bet-amount game-data)) tx-sender
+                    player-turn
+                )))
+                (update-leaderboard player-turn)
+                true
+            )
             false
         )
 
@@ -262,124 +282,7 @@
     (var-get latest-game-id)
 )
 
-;; .......................
-
-(define-constant BOARD-SIZE u9) ;; 3x3 board = 9 cells
-
-;; Each game stores the board, players, turn, and winner
-(define-map games
-    ((id uint))
-    (
-        (player-x principal)
-        (player-o principal)
-        (board (list 9 (optional principal)))
-        (turn principal)
-        (winner (optional principal))
-    )
-)
-
-;; A separate map to store player win counts
-(define-map leaderboard
-    ((player principal))
-    ((wins uint))
-)
-
-;; Helper to update leaderboard when someone wins
-(define-private (update-leaderboard (winner principal))
-    (let ((existing (map-get? leaderboard { player: winner })))
-        (if (is-some existing)
-            (let ((current-wins (get wins (unwrap-panic existing))))
-                (map-set leaderboard { player: winner } { wins: (+ current-wins u1) })
-            )
-            (map-set leaderboard { player: winner } { wins: u1 })
-        )
-    )
-)
-
-;; Public function for making a move and checking for a winner
-(define-public (make-move
-        (game-id uint)
-        (position uint)
-    )
-    (let (
-            (game (unwrap-panic (map-get? games { id: game-id })))
-            (player (tx-sender))
-            (current-turn (get turn game))
-            (board (get board game))
-            (winner (get winner game))
-        )
-        (if (is-some winner)
-            (err u100) ;; game already won
-            (if (is-eq current-turn player)
-                (let (
-                        ;; Mark move on board
-                        (updated-board (replace-at position (some player) board))
-                        ;; Check for winner
-                        (maybe-winner (check-winner updated-board))
-                        (next-turn (if (is-eq player (get player-x game))
-                            (get player-o game)
-                            (get player-x game)
-                        ))
-                    )
-                    (begin
-                        (map-set games { id: game-id } {
-                            player-x: (get player-x game),
-                            player-o: (get player-o game),
-                            board: updated-board,
-                            turn: next-turn,
-                            winner: maybe-winner,
-                        })
-                        (if (is-some maybe-winner)
-                            (update-leaderboard (unwrap-panic maybe-winner))
-                            (ok true)
-                        )
-                    )
-                )
-                (err u101) ;; not your turn
-            )
-        )
-    )
-)
-
-;; Check all possible winning combinations
-(define-private (check-winner (board (list 9 (optional principal))))
-    (let ((lines (list
-            (list u0 u1 u2)
-            (list u3 u4 u5)
-            (list u6 u7 u8)
-            (list u0 u3 u6)
-            (list u1 u4 u7)
-            (list u2 u5 u8)
-            (list u0 u4 u8)
-            (list u2 u4 u6)
-        )))
-        (fold check-line (none) lines)
-    )
-)
-
-(define-private (check-line
-        (acc (optional principal))
-        (line (list 3 uint))
-    )
-    (if (is-some acc)
-        acc
-        (let (
-                (a (element-at (nth 0 line) board))
-                (b (element-at (nth 1 line) board))
-                (c (element-at (nth 2 line) board))
-            )
-            (if (and
-                    (is-some a)
-                    (is-eq a b)
-                    (is-eq b c)
-                )
-                a
-                none
-            )
-        )
-    )
-)
-
-(define-read-only (get-leaderboard)
-    (map-to-list leaderboard)
+;; Read-only function to get a player's win count
+(define-read-only (get-player-wins (player principal))
+    (default-to { wins: u0 } (map-get? leaderboard { player: player }))
 )
